@@ -56,6 +56,7 @@ sub Vim :ATTR_SUB {
     VIM::DoCommand(<<END);
 function! $name($args) $range
     perl \$Vim::X::RETURN = ${class}::$name( split "\\n", scalar VIM::Eval('a:000'))
+    perl \$Vim::X::RETURN =~ s/'/''/g
     perl Vim::X::vim_command( "let g:vimx_return = '\$Vim::X::RETURN'" )
     return g:vimx_return
 endfunction
