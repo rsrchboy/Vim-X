@@ -30,6 +30,9 @@ use Vim::X::Buffer;
 use Vim::X::Cursor;
 use Vim::X::Line;
 
+our %RETURN;
+VIM::DoCommand('let g:vimx_return = {}');
+
 sub import {
     __PACKAGE__->export_to_level(1, @_);
     my $target_class = caller;
@@ -53,20 +56,20 @@ sub Vim :ATTR_SUB {
     my $json  = $attr_data =~ 'json' ? 1     : 0;
     my $range = 'range' x ( $attr_data =~ /range/ );
 
+    my $return_var = "g:vimx_return['$name']";
 
-    my $return
-        = $json
-        ? 'json_decode(g:vimx_return)'
-        : 'g:vimx_return'
+    my $return_viml = $json
+        ? "let $return_var = json_decode('\$Vim::X::RETURN{$name}')"
+        : "let $return_var = '\$Vim::X::RETURN{$name}'"
         ;
 
     no strict 'refs';
     VIM::DoCommand(<<"END");
 function! $name($args) $range
-    perl \$Vim::X::RETURN = ${class}::$name( split "\\n", scalar VIM::Eval('a:000'))
-    perl \$Vim::X::RETURN =~ s/'/''/g
-    perl Vim::X::vim_command( "let g:vimx_return = '\$Vim::X::RETURN'" )
-    return $return
+    perl \$Vim::X::RETURN{$name} = ${class}::$name( split "\\n", scalar VIM::Eval('a:000'))
+    perl \$Vim::X::RETURN{$name} =~ s/'/''/g
+    perl Vim::X::vim_command("$return_viml")
+    return $return_var
 endfunction
 END
 
