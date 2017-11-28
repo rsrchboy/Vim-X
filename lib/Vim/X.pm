@@ -11,19 +11,25 @@ use JSON::Tiny;
 
 use parent 'Exporter';
 
-our @EXPORT = qw/ 
-    vim_func vim_prefix vim_msg vim_buffer vim_cursor vim_window
-    vim_current_file
-    vim_command
-    vim_expand
-    vim_call
-    vim_lines
+our @EXPORT = qw/
     vim_append
+    vim_buffer
+    vim_call
+    vim_command
+    vim_current_file
+    vim_cursor
+    vim_delete
     vim_eval
-    vim_range
-    vim_line
+    vim_expand
+    vim_func
     vim_input
-vim_delete /;
+    vim_line
+    vim_lines
+    vim_msg
+    vim_prefix
+    vim_range
+    vim_window
+/;
 
 use Vim::X::Window;
 use Vim::X::Buffer;
@@ -49,11 +55,13 @@ END
 sub Vim :ATTR_SUB {
     no warnings 'uninitialized';
 
+    # TODO just return if we're not inside vim
+
     my( $class, $sym_ref, undef, undef, $attr_data ) = @_;
 
     my $name  = *{$sym_ref}{NAME};
     my $args  = $attr_data =~ 'args' ? '...' : q{};
-    my $json  = $attr_data =~ 'json' ? 1     : 0;
+    my $json  = $attr_data =~ 'json' ?     1 :   0;
     my $range = 'range' x ( $attr_data =~ /range/ );
 
     my $return_var = "g:vimx_return['$name']";
@@ -66,7 +74,7 @@ sub Vim :ATTR_SUB {
     no strict 'refs';
     VIM::DoCommand(<<"END");
 function! $name($args) $range
-    perl \$Vim::X::RETURN{$name} = ${class}::$name( split "\\n", scalar VIM::Eval('a:000'))
+    perl \$Vim::X::RETURN{$name} = ${class}::$name( split "\\n", scalar VIM::Eval('a:000') )
     perl \$Vim::X::RETURN{$name} =~ s/'/''/g
     perl Vim::X::vim_command("$return_viml")
     return $return_var
@@ -104,9 +112,9 @@ E.g.,
     # in .vimrc
     perl use Vim::X;
 
-    autocmd BufNewFile,BufRead **/perlweekly/src/*.mkd 
+    autocmd BufNewFile,BufRead **/perlweekly/src/*.mkd
                 \ perl Vim::X::load_function_dir('~/.vim/vimx/perlweekly')
-    autocmd BufNewFile,BufRead **/perlweekly/src/*.mkd 
+    autocmd BufNewFile,BufRead **/perlweekly/src/*.mkd
                 \ map <leader>pw :call PWGetInfo()<CR>
 
 =cut
@@ -114,19 +122,19 @@ E.g.,
 sub load_function_dir {
     my $dir = shift;
 
-    my @files = <$dir/*.pl>; 
+    my @files = <$dir/*.pl>;
 
     for my $f ( @files ) {
         my $name = _func_name($f);
-        vim_command( 
-            "au FuncUndefined $name perl Vim::X::load_function_file('$f')" 
+        vim_command(
+            "au FuncUndefined $name perl Vim::X::load_function_file('$f')"
         );
     }
 }
 
 =func source_function_dir( $library_dir )
 
-Like C<load_function_dir>, but if it finds files with the exension C<.pvim>, 
+Like C<load_function_dir>, but if it finds files with the exension C<.pvim>,
 it'll also source them as C<vimL> files at
 load-time, allowing to define both the Perl bindings and the vim macros in the
 same file. Note that, magically, the Perl code will still only be compiled if the function
@@ -145,7 +153,7 @@ be able to live their double-life as Perl scripts and vim file:
 
 
 When sourced as a vim script, the first line is considered a comment and
-ignored, and the rest is read until it hits C<finish>, which cause Vim to 
+ignored, and the rest is read until it hits C<finish>, which cause Vim to
 stop reading the file. When read as a Perl file, the first line contains a
 heredoc that makes all the Vim code into an unused string, so basically ignore
 it in a fancy way.
@@ -172,7 +180,7 @@ For example, the snippet for C<load_function_dir> could be rewritten as such:
     # in .vimrc
     perl use Vim::X;
 
-    autocmd BufNewFile,BufRead **/perlweekly/src/*.mkd 
+    autocmd BufNewFile,BufRead **/perlweekly/src/*.mkd
                 \ perl Vim::X::source_function_dir('~/.vim/vimx/perlweekly')
 
 =cut
@@ -185,8 +193,8 @@ sub source_function_dir {
     for my $f ( @files ) {
         my $name = _func_name($f);
         vim_command( "source $f" ) if $f =~ /\.pvim$/;
-        vim_command( 
-            "au FuncUndefined $name perl Vim::X::load_function_file('$f')" 
+        vim_command(
+            "au FuncUndefined $name perl Vim::X::load_function_file('$f')"
         );
     }
 }
@@ -202,7 +210,7 @@ sub _func_name {
 
 Loads the code within I<$file_path> under the namespace
 I<Vim::X::Function::$name>, where name is the basename of the I<$file_path>,
-minus the C<.pl>/C<.pvim> extension. Not that useful by itself, but used by 
+minus the C<.pl>/C<.pvim> extension. Not that useful by itself, but used by
 C<load_function_dir>.
 
 =cut
@@ -212,7 +220,7 @@ sub load_function_file {
 
     my $name = _func_name($file);
 
-    eval "{ package Vim::X::Function::$name;\n" 
+    eval "{ package Vim::X::Function::$name;\n"
        . "no warnings;\n"
        . Path::Tiny::path($file)->slurp
        . "\n}"
@@ -225,7 +233,7 @@ sub load_function_file {
 }
 
 unless ( $main::curbuf ) {
-    package 
+    package
         VIM;
     no strict;
     sub AUTOLOAD {
@@ -248,7 +256,7 @@ sub vim_msg {
 sub vim_prefix {
     my( $prefix ) = @_;
 
-    $Vim::X::PREFIX = $prefix; 
+    $Vim::X::PREFIX = $prefix;
 }
 
 =func vim_buffer( $i )
@@ -277,7 +285,7 @@ sub vim_current_file {
 
     my $r = vim_expand( $symbol ) or return;
 
-    return Path::Tiny::path( $r ); 
+    return Path::Tiny::path( $r );
 }
 
 =func vim_lines( @indexes )
@@ -291,7 +299,7 @@ sub vim_lines {
     vim_buffer->lines(@_);
 }
 
-=func vim_line($index) 
+=func vim_line($index)
 
 Returns the L<Vim::X::Line> object for line I<$index> of the current buffer.
 If I<$index> is not given, returns the line at the cursor.
@@ -302,7 +310,7 @@ sub vim_line {
     @_ ? vim_buffer->line(shift) : vim_cursor()->line;
 }
 
-=func vim_append(@lines) 
+=func vim_append(@lines)
 
 Appends the given lines after the line under the cursor.
 
@@ -336,7 +344,7 @@ Returns a L<Vim::X::Range> object for the given lines, or single line,
 in the current buffer. The lines can be passed as indexes, or L<Vim::X::Line>
 objects.
 
-If no line whatsoever is passed, the range will be the one on 
+If no line whatsoever is passed, the range will be the one on
 which the command has been called (i.e.: C<:afirstline> and C<a:lastline>).
 
 =cut
@@ -364,12 +372,12 @@ sub vim_command {
 
 =func vim_call( $function, @args )
 
-Calls the vim-space function I<$function> with the 
+Calls the vim-space function I<$function> with the
 provided arguments.
 
     vim_call( 'SetVersion', '1.23' )
 
-    # equivalent of doing 
+    # equivalent of doing
     #    :call SetVersion( '1.23' )
     # in vim
 
@@ -435,7 +443,7 @@ sub vim_cursor {
     return $w->cursor;
 }
 
-=func vim_delete( @lines ) 
+=func vim_delete( @lines )
 
 Deletes the given lines from the current buffer.
 
@@ -490,7 +498,7 @@ support.
 
 Function labeled with the C<:Vim> attribute are automatically exported to Vim.
 
-The C<:Vim> attribute accepts two optional parameters: C<args> and C<range>. 
+The C<:Vim> attribute accepts two optional parameters: C<args> and C<range>.
 
 =head3 :Vim(args)
 
@@ -522,7 +530,7 @@ over a range, instead than once per line (which is the default behavior).
 
 =head3 Loading libraries
 
-If your collection of functions is growing, 
+If your collection of functions is growing,
 C<load_function_dir()> can help with their management. See that function below
 for more details.
 
