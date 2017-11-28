@@ -7,6 +7,8 @@ use warnings;
 use Sub::Attribute;
 use Path::Tiny;
 
+use JSON::Tiny;
+
 use parent 'Exporter';
 
 our @EXPORT = qw/ 
@@ -46,19 +48,25 @@ sub Vim :ATTR_SUB {
 
     my( $class, $sym_ref, undef, undef, $attr_data ) = @_;
 
-    my $name = *{$sym_ref}{NAME};
-
-    my $args = $attr_data =~ 'args' ? '...' : undef;
-
+    my $name  = *{$sym_ref}{NAME};
+    my $args  = $attr_data =~ 'args' ? '...' : q{};
+    my $json  = $attr_data =~ 'json' ? 1     : 0;
     my $range = 'range' x ( $attr_data =~ /range/ );
 
+
+    my $return
+        = $json
+        ? 'json_decode(g:vimx_return)'
+        : 'g:vimx_return'
+        ;
+
     no strict 'refs';
-    VIM::DoCommand(<<END);
+    VIM::DoCommand(<<"END");
 function! $name($args) $range
     perl \$Vim::X::RETURN = ${class}::$name( split "\\n", scalar VIM::Eval('a:000'))
     perl \$Vim::X::RETURN =~ s/'/''/g
     perl Vim::X::vim_command( "let g:vimx_return = '\$Vim::X::RETURN'" )
-    return g:vimx_return
+    return $return
 endfunction
 END
 
